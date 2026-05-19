@@ -37,3 +37,14 @@ target_compile_definitions(TheAnalyzer
     JUCE_USE_WIN_WEBVIEW2=1
         JUCE_USE_CURL=0
 )
+
+if (WIN32)
+    add_custom_command(TARGET TheAnalyzer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$ENV{APPDATA}/VST3"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/TheAnalyzer_artefacts/$<CONFIG>/VST3/The Analyzer.vst3"
+            "$ENV{APPDATA}/VST3/The Analyzer.vst3"
+        COMMENT "Installing The Analyzer.vst3 -> %APPDATA%/VST3"
+        VERBATIM
+    )
+endif()

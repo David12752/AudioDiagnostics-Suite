@@ -144,6 +144,22 @@ namespace gitpro::ipc
         object->setProperty("rmsDbfs", descriptor.rmsDbfs);
         object->setProperty("noiseFloorDbfs", descriptor.noiseFloorDbfs);
         object->setProperty("snrDb", descriptor.snrDb);
+        object->setProperty("lowBandTotalEnergyDb", descriptor.lowBandTotalEnergyDb);
+        object->setProperty("dominantLowFrequencyHz", descriptor.dominantLowFrequencyHz);
+        object->setProperty("dominantLowBandIndex", descriptor.dominantLowBandIndex);
+        object->setProperty("lowFrequencyCorrelation", descriptor.lowFrequencyCorrelation);
+
+        juce::Array<juce::var> lowBandEnergies;
+        juce::Array<juce::var> lowBandPhases;
+
+        for (auto band = 0; band < InstanceDescriptor::lowBandCount; ++band)
+        {
+            lowBandEnergies.add(descriptor.lowBandEnergiesDb[band]);
+            lowBandPhases.add(descriptor.lowBandPhasesRadians[band]);
+        }
+
+        object->setProperty("lowBandEnergiesDb", lowBandEnergies);
+        object->setProperty("lowBandPhasesRadians", lowBandPhases);
 
         juce::Array<juce::var> transports;
 
@@ -179,6 +195,26 @@ namespace gitpro::ipc
         descriptor.rmsDbfs = static_cast<float>(object->getProperty("rmsDbfs"));
         descriptor.noiseFloorDbfs = static_cast<float>(object->getProperty("noiseFloorDbfs"));
         descriptor.snrDb = static_cast<float>(object->getProperty("snrDb"));
+        descriptor.lowBandTotalEnergyDb = static_cast<float>(object->getProperty("lowBandTotalEnergyDb"));
+        descriptor.dominantLowFrequencyHz = static_cast<float>(object->getProperty("dominantLowFrequencyHz"));
+        descriptor.dominantLowBandIndex = static_cast<int>(object->getProperty("dominantLowBandIndex"));
+        descriptor.lowFrequencyCorrelation = static_cast<float>(object->getProperty("lowFrequencyCorrelation"));
+
+        if (const auto* energies = object->getProperty("lowBandEnergiesDb").getArray())
+        {
+            const auto count = std::min<std::size_t>(energies->size(), InstanceDescriptor::lowBandCount);
+
+            for (std::size_t band = 0; band < count; ++band)
+                descriptor.lowBandEnergiesDb[band] = static_cast<float>((*energies)[static_cast<int>(band)]);
+        }
+
+        if (const auto* phases = object->getProperty("lowBandPhasesRadians").getArray())
+        {
+            const auto count = std::min<std::size_t>(phases->size(), InstanceDescriptor::lowBandCount);
+
+            for (std::size_t band = 0; band < count; ++band)
+                descriptor.lowBandPhasesRadians[band] = static_cast<float>((*phases)[static_cast<int>(band)]);
+        }
 
         if (const auto* transports = object->getProperty("supportedTransports").getArray())
         {

@@ -74,6 +74,8 @@ namespace gitpro::ipc
 
     struct InstanceDescriptor
     {
+        static constexpr std::size_t lowBandCount = 6;
+
         EndpointId endpoint;
         PluginRole role = PluginRole::probe;
         std::string displayName;
@@ -88,6 +90,12 @@ namespace gitpro::ipc
         float rmsDbfs = -120.0f;
         float noiseFloorDbfs = -120.0f;
         float snrDb = 0.0f;
+        std::array<float, lowBandCount> lowBandEnergiesDb { -120.0f, -120.0f, -120.0f, -120.0f, -120.0f, -120.0f };
+        std::array<float, lowBandCount> lowBandPhasesRadians {};
+        float lowBandTotalEnergyDb = -120.0f;
+        float dominantLowFrequencyHz = 0.0f;
+        int dominantLowBandIndex = -1;
+        float lowFrequencyCorrelation = 0.0f;
     };
 
     struct TransportPacket

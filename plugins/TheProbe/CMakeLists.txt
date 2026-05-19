@@ -34,5 +34,6 @@ target_link_libraries(TheProbe
 target_compile_definitions(TheProbe
     PUBLIC
         JUCE_WEB_BROWSER=1
+    JUCE_USE_WIN_WEBVIEW2=1
         JUCE_USE_CURL=0
 )

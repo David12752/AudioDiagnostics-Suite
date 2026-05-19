@@ -41,7 +41,7 @@ header span {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -51,6 +51,92 @@ article {
   background: #171c22;
   padding: 16px;
   min-height: 120px;
+}
+
+select,
+button {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+  border: 1px solid #36414d;
+  border-radius: 6px;
+  background: #101419;
+  color: #f4f5f6;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: #2363d1;
+  border-color: #3473df;
+  font-weight: 650;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+.warning {
+  border-color: #b94747;
+  background: #24191b;
+}
+
+.clear {
+  border-color: #36694b;
+}
+
+.advice {
+  grid-column: 1 / -1;
+  min-height: 72px;
+}
+
+.advice strong {
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.tuner {
+  grid-column: span 2;
+  min-height: 170px;
+}
+
+.tunerReadout {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.note {
+  font-size: 54px;
+  font-weight: 800;
+}
+
+.strobe,
+.progress {
+  height: 12px;
+  margin-top: 18px;
+  border-radius: 999px;
+  background: #26313c;
+  overflow: hidden;
+}
+
+.needle,
+.progressFill {
+  height: 100%;
+  border-radius: 999px;
+  background: #64d486;
+  transition: transform 90ms linear, width 100ms linear;
+}
+
+.needle {
+  width: 22%;
+  transform: translateX(180%);
+}
+
+.progressFill {
+  width: 0%;
 }
 
 p {
@@ -75,7 +161,7 @@ strong {
 
 .probe {
   display: grid;
-  grid-template-columns: 1fr repeat(3, minmax(90px, auto));
+  grid-template-columns: 1fr repeat(5, minmax(90px, auto));
   gap: 12px;
   align-items: center;
 }

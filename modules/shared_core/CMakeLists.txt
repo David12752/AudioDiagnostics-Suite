@@ -1,6 +1,8 @@
 add_library(gitpro_shared_core STATIC
     SharedCore.cpp
     dsp/AnalysisTypes.h
+    dsp/LowBandFftAnalyzer.cpp
+    dsp/LowBandFftAnalyzer.h
     ipc/FileDiscoveryRegistry.cpp
     ipc/FileDiscoveryRegistry.h
     ipc/IPCTransport.h

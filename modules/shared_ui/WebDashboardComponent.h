@@ -3,6 +3,7 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 
 #include <functional>
+#include <optional>
 
 #ifndef JUCE_ASSERT_MESSAGE_THREAD
 #define JUCE_ASSERT_MESSAGE_THREAD jassert(juce::MessageManager::getInstance()->isThisTheMessageThread())
@@ -23,6 +24,8 @@ namespace gitpro::ui
         void setCommandHandler(CommandHandler handler);
 
     private:
+        static juce::File getWebViewUserDataFolder();
+        static std::optional<juce::WebBrowserComponent::Resource> createDashboardResource(const juce::String& path);
         static juce::String createInitialHtml();
 
         juce::WebBrowserComponent browser;

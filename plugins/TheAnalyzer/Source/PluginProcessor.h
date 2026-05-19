@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "dsp/LowBandFftAnalyzer.h"
 #include "ipc/FileDiscoveryRegistry.h"
 #include "ipc/IPCTransport.h"
 
@@ -47,12 +48,17 @@ private:
 
     void timerCallback() override;
     void ensureInstanceUuid();
+    void updateLocalSpectralSnapshot() noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
     gitpro::ipc::FileDiscoveryRegistry registry;
+    gitpro::dsp::LowBandFftAnalyzer localLowBandAnalyzer;
     std::atomic<double> currentSampleRate { 0.0 };
     std::atomic<int> currentBlockSize { 0 };
     std::atomic<std::uint64_t> sequenceNumber { 0 };
+    std::array<std::atomic<float>, gitpro::ipc::InstanceDescriptor::lowBandCount> latestLocalLowBandEnergiesDb;
+    std::atomic<float> latestLocalLowBandTotalEnergyDb { -120.0f };
+    std::atomic<float> latestLocalDominantLowFrequencyHz { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TheAnalyzerAudioProcessor)
 };

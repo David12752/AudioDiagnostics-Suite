@@ -88,6 +88,7 @@ namespace gitpro::ipc
         std::uint64_t lastSeenMilliseconds = 0;
         float peakDbfs = -120.0f;
         float rmsDbfs = -120.0f;
+        float crestFactorDb = 0.0f;
         float noiseFloorDbfs = -120.0f;
         float snrDb = 0.0f;
         std::array<float, lowBandCount> lowBandEnergiesDb { -120.0f, -120.0f, -120.0f, -120.0f, -120.0f, -120.0f };
@@ -96,6 +97,8 @@ namespace gitpro::ipc
         float dominantLowFrequencyHz = 0.0f;
         int dominantLowBandIndex = -1;
         float lowFrequencyCorrelation = 0.0f;
+        std::uint64_t pdcPingRequestId = 0;
+        std::int64_t pdcPingInjectedSample = -1;
     };
 
     struct TransportPacket

@@ -6,6 +6,13 @@
 
 namespace gitpro::ipc
 {
+    struct PdcPingRequest
+    {
+        std::uint64_t requestId = 0;
+        EndpointId analyzerEndpoint;
+        std::uint64_t issuedMilliseconds = 0;
+    };
+
     class FileDiscoveryRegistry final : public DiscoveryRegistry
     {
     public:
@@ -21,10 +28,14 @@ namespace gitpro::ipc
         [[nodiscard]] std::vector<InstanceDescriptor> findActiveProbes() const override;
         [[nodiscard]] std::vector<InstanceDescriptor> findActiveAnalyzers() const override;
 
+        bool publishPdcPingRequest(const PdcPingRequest& request) noexcept;
+        [[nodiscard]] std::optional<PdcPingRequest> getLatestPdcPingRequest() const;
+
         [[nodiscard]] static juce::File getDefaultRegistryDirectory();
 
     private:
         [[nodiscard]] juce::File getFileForEndpoint(const EndpointId& endpoint) const;
+        [[nodiscard]] juce::File getPdcPingRequestFile() const;
         [[nodiscard]] std::vector<InstanceDescriptor> findActiveInstances(PluginRole role) const;
         [[nodiscard]] static juce::var descriptorToVar(const InstanceDescriptor& descriptor);
         [[nodiscard]] static std::optional<InstanceDescriptor> descriptorFromVar(const juce::var& value);

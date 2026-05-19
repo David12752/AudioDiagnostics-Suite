@@ -24,6 +24,7 @@ namespace gitpro::dsp
     public:
         static constexpr int fftOrder = 10;
         static constexpr int fftSize = 1 << fftOrder;
+        static constexpr int queuedFrameCount = 4;
         static constexpr std::array<float, LowBandSpectralMetrics::bandCount> bandLowerHz { 40.0f, 55.0f, 70.0f, 90.0f, 115.0f, 135.0f };
         static constexpr std::array<float, LowBandSpectralMetrics::bandCount> bandUpperHz { 55.0f, 70.0f, 90.0f, 115.0f, 135.0f, 150.0f };
 
@@ -38,10 +39,11 @@ namespace gitpro::dsp
 
         juce::dsp::FFT fft { fftOrder };
         std::array<float, fftSize> captureBuffer {};
+        std::array<std::array<float, fftSize>, queuedFrameCount> queuedFrames {};
         std::array<juce::dsp::Complex<float>, fftSize> fftInput {};
         std::array<juce::dsp::Complex<float>, fftSize> fftOutput {};
         std::array<float, fftSize> window {};
-        std::atomic<bool> blockReady { false };
+        juce::AbstractFifo readyFrameFifo { queuedFrameCount };
         int captureIndex = 0;
     };
 }

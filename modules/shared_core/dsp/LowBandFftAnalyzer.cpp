@@ -18,14 +18,11 @@ namespace gitpro::dsp
     {
         captureBuffer.fill(0.0f);
         captureIndex = 0;
-        blockReady.store(false, std::memory_order_release);
+        readyFrameFifo.reset();
     }
 
     void LowBandFftAnalyzer::pushBlock(const juce::AudioBuffer<float>& buffer) noexcept
     {
-        if (blockReady.load(std::memory_order_acquire))
-            return;
-
         const auto numChannels = buffer.getNumChannels();
         const auto numSamples = buffer.getNumSamples();
 
@@ -45,20 +42,43 @@ namespace gitpro::dsp
 
             if (captureIndex >= fftSize)
             {
+                auto start1 = 0;
+                auto size1 = 0;
+                auto start2 = 0;
+                auto size2 = 0;
+                readyFrameFifo.prepareToWrite(1, start1, size1, start2, size2);
+
+                if (size1 > 0)
+                    std::copy(captureBuffer.begin(), captureBuffer.end(), queuedFrames[static_cast<std::size_t>(start1)].begin());
+                else if (size2 > 0)
+                    std::copy(captureBuffer.begin(), captureBuffer.end(), queuedFrames[static_cast<std::size_t>(start2)].begin());
+
+                readyFrameFifo.finishedWrite(size1 + size2);
                 captureIndex = 0;
-                blockReady.store(true, std::memory_order_release);
-                return;
             }
         }
     }
 
     bool LowBandFftAnalyzer::analyzeIfReady(double sampleRate, LowBandSpectralMetrics& output) noexcept
     {
-        if (! blockReady.load(std::memory_order_acquire) || sampleRate <= 0.0)
+        if (sampleRate <= 0.0)
             return false;
 
+        auto start1 = 0;
+        auto size1 = 0;
+        auto start2 = 0;
+        auto size2 = 0;
+        readyFrameFifo.prepareToRead(1, start1, size1, start2, size2);
+
+        if (size1 <= 0 && size2 <= 0)
+            return false;
+
+        const auto& frame = queuedFrames[static_cast<std::size_t>(size1 > 0 ? start1 : start2)];
+
         for (auto index = 0; index < fftSize; ++index)
-            fftInput[static_cast<std::size_t>(index)] = { captureBuffer[static_cast<std::size_t>(index)] * window[static_cast<std::size_t>(index)], 0.0f };
+            fftInput[static_cast<std::size_t>(index)] = { frame[static_cast<std::size_t>(index)] * window[static_cast<std::size_t>(index)], 0.0f };
+
+        readyFrameFifo.finishedRead(size1 + size2);
 
         fft.perform(fftInput.data(), fftOutput.data(), false);
 
@@ -118,7 +138,6 @@ namespace gitpro::dsp
         }
 
         output.lowBandTotalEnergyDb = juce::Decibels::gainToDecibels(std::sqrt(totalPower), -120.0f);
-        blockReady.store(false, std::memory_order_release);
         return true;
     }
 

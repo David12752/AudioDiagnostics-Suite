@@ -45,25 +45,46 @@ public:
     void handleDashboardCommand(const juce::String& commandJson);
 
 private:
+    struct RealtimeMeterSnapshot
+    {
+        float peakDbfs = -120.0f;
+        float rmsDbfs = -120.0f;
+        float crestFactorDb = 0.0f;
+        float noiseFloorDbfs = -120.0f;
+        float snrDb = 0.0f;
+        float lowFrequencyCorrelation = 0.0f;
+    };
+
+    static constexpr int meterFifoCapacity = 128;
+    static constexpr int registryAnnounceDivider = 10;
+    static constexpr int pdcPollDivider = 6;
+
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     void timerCallback() override;
     void ensureInstanceUuid();
     void updateMeterSnapshot(const juce::AudioBuffer<float>& buffer) noexcept;
+    void pushMeterSnapshot(const RealtimeMeterSnapshot& snapshot) noexcept;
+    void flushMeterSnapshots() noexcept;
     void updatePitchDetector(const juce::AudioBuffer<float>& buffer) noexcept;
     void updateAutoGainAnalysis(const juce::AudioBuffer<float>& buffer) noexcept;
     void applyGainCompensation(juce::AudioBuffer<float>& buffer) noexcept;
+    void injectPendingPdcPing(juce::AudioBuffer<float>& buffer) noexcept;
+    void pollPdcPingRequest();
     void updateSpectralSnapshot() noexcept;
     void requestAutoAnalyze(float seconds) noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
     gitpro::ipc::FileDiscoveryRegistry registry;
     gitpro::dsp::LowBandFftAnalyzer lowBandAnalyzer;
+    juce::AbstractFifo meterFifo { meterFifoCapacity };
+    std::array<RealtimeMeterSnapshot, meterFifoCapacity> meterSnapshots;
     std::atomic<double> currentSampleRate { 0.0 };
     std::atomic<int> currentBlockSize { 0 };
     std::atomic<std::uint64_t> sequenceNumber { 0 };
     std::atomic<float> latestPeakDbfs { -120.0f };
     std::atomic<float> latestRmsDbfs { -120.0f };
+    std::atomic<float> latestCrestFactorDb { 0.0f };
     std::atomic<float> latestNoiseFloorDbfs { -120.0f };
     std::atomic<float> latestSnrDb { 0.0f };
     std::array<std::atomic<float>, gitpro::ipc::InstanceDescriptor::lowBandCount> latestLowBandEnergiesDb;
@@ -83,6 +104,12 @@ private:
     std::atomic<int> autoAnalyzeRequestedSamples { 0 };
     std::atomic<bool> autoAnalyzeResetRequested { false };
     std::atomic<bool> autoAnalyzeActive { false };
+    std::atomic<std::uint64_t> pendingPdcPingRequestId { 0 };
+    std::atomic<std::uint64_t> latestPdcPingRequestId { 0 };
+    std::atomic<std::int64_t> latestPdcPingInjectedSample { -1 };
+    std::uint64_t lastSeenPdcPingRequestId = 0;
+    std::int64_t processedSampleCounter = 0;
+    int performanceTimerTick = 0;
     float noiseFloorLinear = 0.00001f;
     float activeSignalLinear = 0.00001f;
     float lowpassLeft = 0.0f;

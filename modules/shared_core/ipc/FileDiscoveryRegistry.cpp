@@ -73,6 +73,57 @@ namespace gitpro::ipc
         return findActiveInstances(PluginRole::analyzer);
     }
 
+    bool FileDiscoveryRegistry::publishPdcPingRequest(const PdcPingRequest& request) noexcept
+    {
+        if (request.requestId == 0 || ! request.analyzerEndpoint.isValid())
+            return false;
+
+        if (! directory.createDirectory())
+            return false;
+
+        auto* object = new juce::DynamicObject();
+        object->setProperty("protocolVersion", static_cast<int>(TransportPacket::protocolVersion));
+        object->setProperty("requestId", static_cast<double>(request.requestId));
+        object->setProperty("analyzerUuid", juce::String(request.analyzerEndpoint.toString()));
+        object->setProperty("issuedMilliseconds", static_cast<double>(request.issuedMilliseconds));
+
+        const auto target = getPdcPingRequestFile();
+        const auto temp = target.getSiblingFile(target.getFileName() + ".tmp");
+        const auto json = juce::JSON::toString(juce::var(object), true);
+
+        if (! temp.replaceWithText(json))
+            return false;
+
+        if (target.existsAsFile())
+            target.deleteFile();
+
+        return temp.moveFileTo(target);
+    }
+
+    std::optional<PdcPingRequest> FileDiscoveryRegistry::getLatestPdcPingRequest() const
+    {
+        const auto file = getPdcPingRequestFile();
+
+        if (! file.existsAsFile())
+            return std::nullopt;
+
+        const auto parsed = juce::JSON::parse(file.loadFileAsString());
+        const auto* object = parsed.getDynamicObject();
+
+        if (object == nullptr)
+            return std::nullopt;
+
+        PdcPingRequest request;
+        request.requestId = static_cast<std::uint64_t>(static_cast<double>(object->getProperty("requestId")));
+        request.analyzerEndpoint = EndpointId::fromString(object->getProperty("analyzerUuid").toString().toStdString());
+        request.issuedMilliseconds = static_cast<std::uint64_t>(static_cast<double>(object->getProperty("issuedMilliseconds")));
+
+        if (request.requestId == 0 || ! request.analyzerEndpoint.isValid())
+            return std::nullopt;
+
+        return request;
+    }
+
     juce::File FileDiscoveryRegistry::getDefaultRegistryDirectory()
     {
         return juce::File::getSpecialLocation(juce::File::tempDirectory)
@@ -89,6 +140,11 @@ namespace gitpro::ipc
             fileName = "invalid-endpoint";
 
         return directory.getChildFile(fileName + ".json");
+    }
+
+    juce::File FileDiscoveryRegistry::getPdcPingRequestFile() const
+    {
+        return directory.getChildFile("pdc_ping_request.json");
     }
 
     std::vector<InstanceDescriptor> FileDiscoveryRegistry::findActiveInstances(PluginRole role) const
@@ -142,12 +198,15 @@ namespace gitpro::ipc
         object->setProperty("lastSeenMilliseconds", static_cast<double>(descriptor.lastSeenMilliseconds));
         object->setProperty("peakDbfs", descriptor.peakDbfs);
         object->setProperty("rmsDbfs", descriptor.rmsDbfs);
+        object->setProperty("crestFactorDb", descriptor.crestFactorDb);
         object->setProperty("noiseFloorDbfs", descriptor.noiseFloorDbfs);
         object->setProperty("snrDb", descriptor.snrDb);
         object->setProperty("lowBandTotalEnergyDb", descriptor.lowBandTotalEnergyDb);
         object->setProperty("dominantLowFrequencyHz", descriptor.dominantLowFrequencyHz);
         object->setProperty("dominantLowBandIndex", descriptor.dominantLowBandIndex);
         object->setProperty("lowFrequencyCorrelation", descriptor.lowFrequencyCorrelation);
+        object->setProperty("pdcPingRequestId", static_cast<double>(descriptor.pdcPingRequestId));
+        object->setProperty("pdcPingInjectedSample", static_cast<double>(descriptor.pdcPingInjectedSample));
 
         juce::Array<juce::var> lowBandEnergies;
         juce::Array<juce::var> lowBandPhases;
@@ -193,12 +252,15 @@ namespace gitpro::ipc
         descriptor.lastSeenMilliseconds = static_cast<std::uint64_t>(static_cast<double>(object->getProperty("lastSeenMilliseconds")));
         descriptor.peakDbfs = static_cast<float>(object->getProperty("peakDbfs"));
         descriptor.rmsDbfs = static_cast<float>(object->getProperty("rmsDbfs"));
+        descriptor.crestFactorDb = static_cast<float>(object->getProperty("crestFactorDb"));
         descriptor.noiseFloorDbfs = static_cast<float>(object->getProperty("noiseFloorDbfs"));
         descriptor.snrDb = static_cast<float>(object->getProperty("snrDb"));
         descriptor.lowBandTotalEnergyDb = static_cast<float>(object->getProperty("lowBandTotalEnergyDb"));
         descriptor.dominantLowFrequencyHz = static_cast<float>(object->getProperty("dominantLowFrequencyHz"));
         descriptor.dominantLowBandIndex = static_cast<int>(object->getProperty("dominantLowBandIndex"));
         descriptor.lowFrequencyCorrelation = static_cast<float>(object->getProperty("lowFrequencyCorrelation"));
+        descriptor.pdcPingRequestId = static_cast<std::uint64_t>(static_cast<double>(object->getProperty("pdcPingRequestId")));
+        descriptor.pdcPingInjectedSample = static_cast<std::int64_t>(static_cast<double>(object->getProperty("pdcPingInjectedSample")));
 
         if (const auto* energies = object->getProperty("lowBandEnergiesDb").getArray())
         {

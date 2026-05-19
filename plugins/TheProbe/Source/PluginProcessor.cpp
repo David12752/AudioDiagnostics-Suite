@@ -10,6 +10,7 @@ namespace
     constexpr auto minPitchHz = 35.0f;
     constexpr auto maxPitchHz = 1200.0f;
     constexpr auto defaultAnalyzeSeconds = 3.0f;
+    constexpr auto pdcPingImpulseAmplitude = 0.85f;
 
     float gainToDb(float gain) noexcept
     {
@@ -20,6 +21,20 @@ namespace
     {
         const auto value = object.getProperty(property);
         return value.isVoid() ? fallback : static_cast<float>(value);
+    }
+
+    std::int64_t getBlockStartSample(juce::AudioProcessor& processor, std::int64_t fallback) noexcept
+    {
+        if (auto* playHead = processor.getPlayHead())
+        {
+            if (const auto position = playHead->getPosition())
+            {
+                if (const auto timeInSamples = position->getTimeInSamples())
+                    return *timeInSamples;
+            }
+        }
+
+        return fallback;
     }
 }
 
@@ -37,7 +52,7 @@ TheProbeAudioProcessor::TheProbeAudioProcessor()
 
     ensureInstanceUuid();
     registry.start(createInstanceDescriptor());
-    startTimerHz(2);
+    startTimerHz(60);
 }
 
 TheProbeAudioProcessor::~TheProbeAudioProcessor()
@@ -55,6 +70,9 @@ void TheProbeAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     pitchWasAboveThreshold = false;
     pitchSamplesSinceCrossing = 0;
     smoothedPitchHz = 0.0f;
+    processedSampleCounter = 0;
+    performanceTimerTick = 0;
+    meterFifo.reset();
     registry.announce(createInstanceDescriptor());
 }
 
@@ -79,6 +97,8 @@ void TheProbeAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     updateAutoGainAnalysis(buffer);
     lowBandAnalyzer.pushBlock(buffer);
     applyGainCompensation(buffer);
+    injectPendingPdcPing(buffer);
+    processedSampleCounter += buffer.getNumSamples();
     sequenceNumber.fetch_add(1, std::memory_order_relaxed);
 }
 
@@ -180,12 +200,15 @@ gitpro::ipc::InstanceDescriptor TheProbeAudioProcessor::createInstanceDescriptor
     descriptor.heartbeatCounter = sequenceNumber.load(std::memory_order_relaxed);
     descriptor.peakDbfs = latestPeakDbfs.load(std::memory_order_relaxed);
     descriptor.rmsDbfs = latestRmsDbfs.load(std::memory_order_relaxed);
+    descriptor.crestFactorDb = latestCrestFactorDb.load(std::memory_order_relaxed);
     descriptor.noiseFloorDbfs = latestNoiseFloorDbfs.load(std::memory_order_relaxed);
     descriptor.snrDb = latestSnrDb.load(std::memory_order_relaxed);
     descriptor.lowBandTotalEnergyDb = latestLowBandTotalEnergyDb.load(std::memory_order_relaxed);
     descriptor.dominantLowFrequencyHz = latestDominantLowFrequencyHz.load(std::memory_order_relaxed);
     descriptor.dominantLowBandIndex = latestDominantLowBandIndex.load(std::memory_order_relaxed);
     descriptor.lowFrequencyCorrelation = latestLowFrequencyCorrelation.load(std::memory_order_relaxed);
+    descriptor.pdcPingRequestId = latestPdcPingRequestId.load(std::memory_order_relaxed);
+    descriptor.pdcPingInjectedSample = latestPdcPingInjectedSample.load(std::memory_order_relaxed);
 
     for (std::size_t band = 0; band < gitpro::ipc::InstanceDescriptor::lowBandCount; ++band)
     {
@@ -198,22 +221,38 @@ gitpro::ipc::InstanceDescriptor TheProbeAudioProcessor::createInstanceDescriptor
 
 juce::String TheProbeAudioProcessor::createStatusJson() const
 {
+    juce::Array<juce::var> lowBandEnergies;
+
+    for (std::size_t band = 0; band < gitpro::ipc::InstanceDescriptor::lowBandCount; ++band)
+        lowBandEnergies.add(latestLowBandEnergiesDb[band].load(std::memory_order_relaxed));
+
+    auto* realtimeObject = new juce::DynamicObject();
+    realtimeObject->setProperty("peakDbfs", latestPeakDbfs.load(std::memory_order_relaxed));
+    realtimeObject->setProperty("rmsDbfs", latestRmsDbfs.load(std::memory_order_relaxed));
+    realtimeObject->setProperty("crestFactorDb", latestCrestFactorDb.load(std::memory_order_relaxed));
+    realtimeObject->setProperty("lowFrequencyCorrelation", latestLowFrequencyCorrelation.load(std::memory_order_relaxed));
+    realtimeObject->setProperty("lowBandEnergiesDb", lowBandEnergies);
+
     auto* object = new juce::DynamicObject();
     object->setProperty("instanceUuid", getInstanceUuid());
     object->setProperty("role", "probe");
     object->setProperty("peakDbfs", latestPeakDbfs.load(std::memory_order_relaxed));
     object->setProperty("rmsDbfs", latestRmsDbfs.load(std::memory_order_relaxed));
+    object->setProperty("crestFactorDb", latestCrestFactorDb.load(std::memory_order_relaxed));
     object->setProperty("noiseFloorDbfs", latestNoiseFloorDbfs.load(std::memory_order_relaxed));
     object->setProperty("snrDb", latestSnrDb.load(std::memory_order_relaxed));
     object->setProperty("lowBandTotalEnergyDb", latestLowBandTotalEnergyDb.load(std::memory_order_relaxed));
     object->setProperty("dominantLowFrequencyHz", latestDominantLowFrequencyHz.load(std::memory_order_relaxed));
     object->setProperty("lowFrequencyCorrelation", latestLowFrequencyCorrelation.load(std::memory_order_relaxed));
+    object->setProperty("realtime", juce::var(realtimeObject));
     object->setProperty("pitchFrequencyHz", latestPitchFrequencyHz.load(std::memory_order_relaxed));
     object->setProperty("targetPeakDbfs", targetPeakDbfs.load(std::memory_order_relaxed));
     object->setProperty("interfaceMaxInputDbU", interfaceMaxInputDbU.load(std::memory_order_relaxed));
     object->setProperty("autoGainDb", autoGainDb.load(std::memory_order_relaxed));
     object->setProperty("measuredCalibrationPeakDbfs", measuredCalibrationPeakDbfs.load(std::memory_order_relaxed));
     object->setProperty("requiredGainOffsetDb", requiredGainOffsetDb.load(std::memory_order_relaxed));
+    object->setProperty("pdcPingRequestId", static_cast<double>(latestPdcPingRequestId.load(std::memory_order_relaxed)));
+    object->setProperty("pdcPingInjectedSample", static_cast<double>(latestPdcPingInjectedSample.load(std::memory_order_relaxed)));
     object->setProperty("autoAnalyzeActive", autoAnalyzeActive.load(std::memory_order_relaxed));
     const auto totalSamples = autoAnalyzeTotalSamples.load(std::memory_order_relaxed);
     const auto remainingSamples = autoAnalyzeRemainingSamples.load(std::memory_order_relaxed);
@@ -257,8 +296,15 @@ void TheProbeAudioProcessor::ensureInstanceUuid()
 
 void TheProbeAudioProcessor::timerCallback()
 {
+    ++performanceTimerTick;
+    flushMeterSnapshots();
     updateSpectralSnapshot();
-    registry.announce(createInstanceDescriptor());
+
+    if (performanceTimerTick % pdcPollDivider == 0)
+        pollPdcPingRequest();
+
+    if (performanceTimerTick % registryAnnounceDivider == 0)
+        registry.announce(createInstanceDescriptor());
 }
 
 void TheProbeAudioProcessor::updateMeterSnapshot(const juce::AudioBuffer<float>& buffer) noexcept
@@ -304,6 +350,9 @@ void TheProbeAudioProcessor::updateMeterSnapshot(const juce::AudioBuffer<float>&
     }
 
     const auto rms = sampleCount > 0 ? static_cast<float>(std::sqrt(sumSquares / static_cast<double>(sampleCount))) : 0.0f;
+    const auto peakDb = gainToDb(peak);
+    const auto rmsDb = gainToDb(rms);
+    const auto crestFactor = rms > silenceFloorLinear ? juce::jlimit(0.0f, 60.0f, peakDb - rmsDb) : 0.0f;
 
     if (rms > silenceFloorLinear && rms < noiseGateLinear)
         noiseFloorLinear += 0.01f * (rms - noiseFloorLinear);
@@ -313,16 +362,80 @@ void TheProbeAudioProcessor::updateMeterSnapshot(const juce::AudioBuffer<float>&
 
     const auto snr = juce::jlimit(0.0f, 120.0f, gainToDb(activeSignalLinear) - gainToDb(noiseFloorLinear));
 
-    latestPeakDbfs.store(gainToDb(peak), std::memory_order_relaxed);
-    latestRmsDbfs.store(gainToDb(rms), std::memory_order_relaxed);
-    latestNoiseFloorDbfs.store(gainToDb(noiseFloorLinear), std::memory_order_relaxed);
-    latestSnrDb.store(snr, std::memory_order_relaxed);
+    RealtimeMeterSnapshot snapshot;
+    snapshot.peakDbfs = peakDb;
+    snapshot.rmsDbfs = rmsDb;
+    snapshot.crestFactorDb = crestFactor;
+    snapshot.noiseFloorDbfs = gainToDb(noiseFloorLinear);
+    snapshot.snrDb = snr;
+    snapshot.lowFrequencyCorrelation = latestLowFrequencyCorrelation.load(std::memory_order_relaxed);
 
     if (lowLeftSquares > 0.00000001f && lowRightSquares > 0.00000001f)
     {
         const auto correlation = lowCross / std::sqrt(lowLeftSquares * lowRightSquares);
-        latestLowFrequencyCorrelation.store(juce::jlimit(-1.0f, 1.0f, correlation), std::memory_order_relaxed);
+        snapshot.lowFrequencyCorrelation = juce::jlimit(-1.0f, 1.0f, correlation);
     }
+
+    pushMeterSnapshot(snapshot);
+}
+
+void TheProbeAudioProcessor::pushMeterSnapshot(const RealtimeMeterSnapshot& snapshot) noexcept
+{
+    auto start1 = 0;
+    auto size1 = 0;
+    auto start2 = 0;
+    auto size2 = 0;
+    meterFifo.prepareToWrite(1, start1, size1, start2, size2);
+
+    if (size1 > 0)
+        meterSnapshots[static_cast<std::size_t>(start1)] = snapshot;
+    else if (size2 > 0)
+        meterSnapshots[static_cast<std::size_t>(start2)] = snapshot;
+
+    meterFifo.finishedWrite(size1 + size2);
+}
+
+void TheProbeAudioProcessor::flushMeterSnapshots() noexcept
+{
+    auto peakDbfs = -120.0f;
+    auto rmsLinearSum = 0.0f;
+    auto crestSum = 0.0f;
+    auto noiseSum = 0.0f;
+    auto snrSum = 0.0f;
+    auto correlationSum = 0.0f;
+    auto consumed = 0;
+
+    for (;;)
+    {
+        auto start1 = 0;
+        auto size1 = 0;
+        auto start2 = 0;
+        auto size2 = 0;
+        meterFifo.prepareToRead(1, start1, size1, start2, size2);
+
+        if (size1 <= 0 && size2 <= 0)
+            break;
+
+        const auto& snapshot = meterSnapshots[static_cast<std::size_t>(size1 > 0 ? start1 : start2)];
+        peakDbfs = std::max(peakDbfs, snapshot.peakDbfs);
+        rmsLinearSum += juce::Decibels::decibelsToGain(snapshot.rmsDbfs);
+        crestSum += snapshot.crestFactorDb;
+        noiseSum += snapshot.noiseFloorDbfs;
+        snrSum += snapshot.snrDb;
+        correlationSum += snapshot.lowFrequencyCorrelation;
+        ++consumed;
+        meterFifo.finishedRead(size1 + size2);
+    }
+
+    if (consumed <= 0)
+        return;
+
+    latestPeakDbfs.store(peakDbfs, std::memory_order_relaxed);
+    latestRmsDbfs.store(gainToDb(rmsLinearSum / static_cast<float>(consumed)), std::memory_order_relaxed);
+    latestCrestFactorDb.store(crestSum / static_cast<float>(consumed), std::memory_order_relaxed);
+    latestNoiseFloorDbfs.store(noiseSum / static_cast<float>(consumed), std::memory_order_relaxed);
+    latestSnrDb.store(snrSum / static_cast<float>(consumed), std::memory_order_relaxed);
+    latestLowFrequencyCorrelation.store(correlationSum / static_cast<float>(consumed), std::memory_order_relaxed);
 }
 
 void TheProbeAudioProcessor::updatePitchDetector(const juce::AudioBuffer<float>& buffer) noexcept
@@ -418,6 +531,42 @@ void TheProbeAudioProcessor::updateAutoGainAnalysis(const juce::AudioBuffer<floa
 void TheProbeAudioProcessor::applyGainCompensation(juce::AudioBuffer<float>& buffer) noexcept
 {
     buffer.applyGain(juce::Decibels::decibelsToGain(autoGainDb.load(std::memory_order_relaxed)));
+}
+
+void TheProbeAudioProcessor::injectPendingPdcPing(juce::AudioBuffer<float>& buffer) noexcept
+{
+    const auto requestId = pendingPdcPingRequestId.exchange(0, std::memory_order_acq_rel);
+
+    if (requestId == 0 || buffer.getNumSamples() <= 0)
+        return;
+
+    for (auto channel = 0; channel < buffer.getNumChannels(); ++channel)
+    {
+        auto* samples = buffer.getWritePointer(channel);
+        samples[0] = juce::jlimit(-1.0f, 1.0f, samples[0] + pdcPingImpulseAmplitude);
+    }
+
+    latestPdcPingRequestId.store(requestId, std::memory_order_release);
+    latestPdcPingInjectedSample.store(getBlockStartSample(*this, processedSampleCounter), std::memory_order_release);
+}
+
+void TheProbeAudioProcessor::pollPdcPingRequest()
+{
+    const auto request = registry.getLatestPdcPingRequest();
+
+    if (! request.has_value() || request->requestId <= lastSeenPdcPingRequestId)
+        return;
+
+    const auto now = static_cast<std::uint64_t>(juce::Time::getMillisecondCounter());
+    const auto requestAge = now >= request->issuedMilliseconds ? now - request->issuedMilliseconds : 0;
+
+    if (requestAge > 10000)
+        return;
+
+    lastSeenPdcPingRequestId = request->requestId;
+    latestPdcPingRequestId.store(request->requestId, std::memory_order_release);
+    latestPdcPingInjectedSample.store(-1, std::memory_order_release);
+    pendingPdcPingRequestId.store(request->requestId, std::memory_order_release);
 }
 
 void TheProbeAudioProcessor::updateSpectralSnapshot() noexcept

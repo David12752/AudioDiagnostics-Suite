@@ -9,12 +9,12 @@ TheAnalyzerAudioProcessorEditor::TheAnalyzerAudioProcessorEditor(TheAnalyzerAudi
     dashboard.setCommandHandler([this](const juce::String& commandJson)
     {
         JUCE_ASSERT_MESSAGE_THREAD;
-        juce::ignoreUnused(commandJson);
+        audioProcessor.handleDashboardCommand(commandJson);
         dashboard.publishJsonSnapshot(audioProcessor.createDashboardSnapshotJson());
     });
 
     dashboard.publishJsonSnapshot(audioProcessor.createDashboardSnapshotJson());
-    startTimerHz(5);
+    startTimerHz(60);
     setSize(920, 560);
 }
 

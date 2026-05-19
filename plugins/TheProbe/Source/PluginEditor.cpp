@@ -14,7 +14,7 @@ TheProbeAudioProcessorEditor::TheProbeAudioProcessorEditor(TheProbeAudioProcesso
     });
 
     dashboard.publishJsonSnapshot(audioProcessor.createStatusJson());
-    startTimerHz(20);
+    startTimerHz(60);
     setSize(760, 520);
 }
 

@@ -1,0 +1,16 @@
+build/
+build-*/
+out/
+.vs/
+.vscode/
+
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
+
+node_modules/
+web/dashboard/dist/
+web/dashboard/.vite/
+
+*.log

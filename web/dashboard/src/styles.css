@@ -1,0 +1,111 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, Segoe UI, sans-serif;
+  background: #111418;
+  color: #f4f5f6;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #111418;
+}
+
+main {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 24px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 20px;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+header span {
+  color: #a9b1bc;
+  font-size: 13px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+article {
+  border: 1px solid #2b323b;
+  border-radius: 8px;
+  background: #171c22;
+  padding: 16px;
+  min-height: 120px;
+}
+
+p {
+  margin: 0;
+  color: #a9b1bc;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 28px;
+}
+
+.probeList {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.probe {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, minmax(90px, auto));
+  gap: 12px;
+  align-items: center;
+}
+
+.probe h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.probe span {
+  text-align: right;
+  color: #dce2e8;
+}
+
+@media (max-width: 720px) {
+  main {
+    padding: 16px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .probe {
+    grid-template-columns: 1fr;
+  }
+
+  .probe span {
+    text-align: left;
+  }
+}

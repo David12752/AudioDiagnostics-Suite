@@ -32,4 +32,8 @@ else()
     target_compile_definitions(gitpro_shared_ui PUBLIC GITPRO_ENABLE_WEBVIEW_UI=0 JUCE_WEB_BROWSER=0 JUCE_USE_WIN_WEBVIEW2=0)
 endif()
 
+if (MSVC)
+    target_compile_options(gitpro_shared_ui PRIVATE /FS /EHsc)
+endif()
+
 target_compile_definitions(gitpro_shared_ui PUBLIC JUCE_USE_CURL=0)

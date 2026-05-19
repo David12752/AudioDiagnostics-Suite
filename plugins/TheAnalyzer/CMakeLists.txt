@@ -39,7 +39,7 @@ target_compile_definitions(TheAnalyzer
 )
 
 if (WIN32)
-    add_custom_command(TARGET TheAnalyzer POST_BUILD
+    add_custom_command(TARGET TheAnalyzer_VST3 POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$ENV{APPDATA}/VST3"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_BINARY_DIR}/TheAnalyzer_artefacts/$<CONFIG>/VST3/The Analyzer.vst3"
